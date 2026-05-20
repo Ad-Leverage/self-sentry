@@ -28,13 +28,24 @@ def _web_client(token: str) -> Any:
         return client
 
 
-def _post(token: str, channel: str, attachment: dict[str, Any]) -> None:
+def _post(
+    token: str,
+    channel: str,
+    attachment: dict[str, Any],
+    *,
+    thread_ts: str | None = None,
+) -> str | None:
     try:
         client = _web_client(token)
-        client.chat_postMessage(channel=channel, attachments=[attachment])
+        kwargs: dict[str, Any] = {"channel": channel, "attachments": [attachment]}
+        if thread_ts:
+            kwargs["thread_ts"] = thread_ts
+        resp = client.chat_postMessage(**kwargs)
+        return resp.get("ts") if resp is not None else None
     except Exception as e:  # noqa: BLE001
         # Includes SlackApiError; never let Slack failures break callers.
         log.warning("self_sentry: Slack post failed (channel=%s): %s", channel, e)
+        return None
 
 
 def notify(
@@ -45,12 +56,13 @@ def notify(
     fields: dict[str, Any] | None = None,
     channel: str | None = None,
     service_name: str | None = None,
-) -> None:
+    thread_ts: str | None = None,
+) -> str | None:
     cfg = get_config()
     if cfg is None:
-        return
+        return None
     if getattr(_in_progress, "active", False):
-        return
+        return None
     _in_progress.active = True
     try:
         attachment = build_attachment(
@@ -61,7 +73,7 @@ def notify(
             fields=fields,
             footer=cfg.footer,
         )
-        _post(cfg.token, channel or cfg.channel, attachment)
+        return _post(cfg.token, channel or cfg.channel, attachment, thread_ts=thread_ts)
     finally:
         _in_progress.active = False
 
@@ -77,17 +89,39 @@ def report_exception(
         return
     try:
         tb = truncate_traceback(exc)
-        fields: dict[str, Any] = {"Traceback": _code_block(tb)}
-        if context:
-            fields.update(context)
-        notify(
-            title=type(exc).__name__,
-            message=str(exc) or repr(exc),
-            status=1,
-            fields=fields,
-            channel=None,
-            service_name=service_name,
-        )
+        ctx = dict(context) if context else {}
+        if cfg.thread_long_fields:
+            # Multi-line context entries (event JSON etc.) follow the
+            # traceback into the thread reply so the channel feed stays
+            # to one short row per alert.
+            long_fields = {k: v for k, v in ctx.items() if "\n" in str(v)}
+            short_fields = {k: v for k, v in ctx.items() if k not in long_fields}
+            ts = notify(
+                title=type(exc).__name__,
+                message=str(exc) or repr(exc),
+                status=1,
+                fields=short_fields,
+                service_name=service_name,
+            )
+            if ts:
+                thread_fields: dict[str, Any] = {"Traceback": _code_block(tb), **long_fields}
+                notify(
+                    title="",
+                    status=1,
+                    fields=thread_fields,
+                    service_name=service_name,
+                    thread_ts=ts,
+                )
+        else:
+            fields: dict[str, Any] = {"Traceback": _code_block(tb), **ctx}
+            notify(
+                title=type(exc).__name__,
+                message=str(exc) or repr(exc),
+                status=1,
+                fields=fields,
+                channel=None,
+                service_name=service_name,
+            )
     except Exception as reporter_err:  # noqa: BLE001
         log.warning("self_sentry.report_exception failed: %s", reporter_err)
 

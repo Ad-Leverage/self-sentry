@@ -92,6 +92,39 @@ def test_watchdog_disabled_via_init(fake_slack):
     assert fake_slack.instances == [] or fake_slack.instances[0].calls == []
 
 
+def test_watchdog_threads_event_when_enabled(fake_slack):
+    self_sentry.init(
+        token="xoxb-1",
+        channel="#a",
+        service_name="svc",
+        thread_long_fields=True,
+    )
+    ctx = FakeLambdaContext(remaining_ms=150, function_name="fn", request_id="r1")
+    wd = LambdaTimeoutWatchdog(
+        context=ctx,
+        service_name="svc",
+        buffer_ms=50,
+        event_repr='{"hello": "world"}',
+    )
+    wd.start()
+    time.sleep(0.3)
+
+    calls = fake_slack.instances[0].calls
+    assert len(calls) == 2
+
+    parent, reply = calls[0], calls[1]
+    assert parent.get("thread_ts") is None
+    assert parent["attachments"][0]["title"] == "Lambda approaching timeout"
+    parent_fields = parent["attachments"][0]["fields"]
+    # function_name etc. stay on the parent; event moves to the reply.
+    assert any(f["title"] == "function_name" for f in parent_fields)
+    assert all(f["title"] != "event" for f in parent_fields)
+
+    assert reply["thread_ts"] == "1234.5678"
+    event_field = next(f for f in reply["attachments"][0]["fields"] if f["title"] == "event")
+    assert "hello" in event_field["value"]
+
+
 @pytest.mark.parametrize("remaining_ms", [1, 5, 50])
 def test_watchdog_handles_near_zero_remaining(initialized, remaining_ms):
     ctx = FakeLambdaContext(remaining_ms=remaining_ms)

@@ -61,24 +61,49 @@ class LambdaTimeoutWatchdog:
             self._fired = True
         try:
             from ._client import notify
+            from ._config import get_config
             from ._formatter import _code_block
 
             try:
                 remaining_ms = int(self._context.get_remaining_time_in_millis())
             except Exception:
                 remaining_ms = -1
-            fields: dict[str, Any] = {
+            short_fields: dict[str, Any] = {
                 "remaining_ms": remaining_ms,
                 "function_name": getattr(self._context, "function_name", "?"),
                 "request_id": getattr(self._context, "aws_request_id", "?"),
-                "event": _code_block(self._event_repr),
             }
-            notify(
-                title="Lambda approaching timeout",
-                message=f"Function {fields['function_name']} has < {self._buffer_ms}ms remaining.",
-                status=1,
-                fields=fields,
-                service_name=self._service_name,
+            wrapped_event = _code_block(self._event_repr)
+            title = "Lambda approaching timeout"
+            message = (
+                f"Function {short_fields['function_name']} "
+                f"has < {self._buffer_ms}ms remaining."
             )
+
+            cfg = get_config()
+            if cfg is not None and cfg.thread_long_fields:
+                ts = notify(
+                    title=title,
+                    message=message,
+                    status=1,
+                    fields=short_fields,
+                    service_name=self._service_name,
+                )
+                if ts:
+                    notify(
+                        title="",
+                        status=1,
+                        fields={"event": wrapped_event},
+                        service_name=self._service_name,
+                        thread_ts=ts,
+                    )
+            else:
+                notify(
+                    title=title,
+                    message=message,
+                    status=1,
+                    fields={**short_fields, "event": wrapped_event},
+                    service_name=self._service_name,
+                )
         except Exception as e:  # noqa: BLE001
             log.warning("self_sentry watchdog fire failed: %s", e)

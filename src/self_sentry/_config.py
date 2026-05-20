@@ -19,6 +19,7 @@ class SelfSentryConfig:
     install_asyncio_hook: bool = True
     lambda_timeout_warning: bool = True
     timeout_warning_buffer_ms: int = 1000
+    thread_long_fields: bool = False
     footer: str = "self-sentry"
     originals: dict[str, Any] = field(default_factory=dict)
 
@@ -45,11 +46,16 @@ def init(
     install_asyncio_hook: bool = True,
     lambda_timeout_warning: bool = True,
     timeout_warning_buffer_ms: int = 1000,
+    thread_long_fields: bool = False,
     footer: str = "self-sentry",
 ) -> None:
     """Initialize self-sentry. Sentry-style: call once at app startup.
 
     All reporting goes to one Slack bot, posting to one channel.
+
+    Set ``thread_long_fields=True`` to keep the channel feed scannable:
+    the alert posts with just the short context, and the traceback /
+    event payload move into a threaded reply.
     """
     global _config
 
@@ -62,6 +68,7 @@ def init(
         install_asyncio_hook=install_asyncio_hook,
         lambda_timeout_warning=lambda_timeout_warning,
         timeout_warning_buffer_ms=timeout_warning_buffer_ms,
+        thread_long_fields=thread_long_fields,
         footer=footer,
     )
 

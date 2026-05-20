@@ -60,18 +60,52 @@ def test_reentry_guard_prevents_recursion(initialized, monkeypatch):
 
     original_post = _client._post
 
-    def reentrant_post(token, channel, attachment):
+    def reentrant_post(token, channel, attachment, *, thread_ts=None):
         call_count["n"] += 1
         # First call simulates an internal failure path that re-enters notify().
         # The guard should make the inner call a no-op.
         if call_count["n"] == 1:
             self_sentry.notify("re-entered")
-        return original_post(token, channel, attachment)
+        return original_post(token, channel, attachment, thread_ts=thread_ts)
 
     monkeypatch.setattr(_client, "_post", reentrant_post)
     self_sentry.notify("outer")
     # Outer call happens once; inner re-entry is suppressed.
     assert call_count["n"] == 1
+
+
+def test_thread_long_fields_splits_traceback_into_reply(fake_slack):
+    self_sentry.init(
+        token="xoxb-1",
+        channel="#a",
+        service_name="svc",
+        thread_long_fields=True,
+    )
+    try:
+        raise ValueError("boom")
+    except ValueError as e:
+        self_sentry.report_exception(e, context={"user": "alice", "blob": "line-1\nline-2"})
+
+    calls = fake_slack.instances[0].calls
+    assert len(calls) == 2
+
+    parent, reply = calls[0], calls[1]
+
+    # Parent: alert with short context only — no traceback, no multi-line blob.
+    assert parent.get("thread_ts") is None
+    parent_fields = parent["attachments"][0]["fields"]
+    assert parent["attachments"][0]["title"] == "ValueError"
+    assert any(f["title"] == "user" and f["value"] == "alice" for f in parent_fields)
+    assert all(f["title"] != "Traceback" for f in parent_fields)
+    assert all(f["title"] != "blob" for f in parent_fields)
+
+    # Reply: threaded against the parent's ts, carries traceback + multi-line blob.
+    assert reply["thread_ts"] == "1234.5678"
+    reply_fields = reply["attachments"][0]["fields"]
+    tb_field = next(f for f in reply_fields if f["title"] == "Traceback")
+    assert "ValueError: boom" in tb_field["value"]
+    blob_field = next(f for f in reply_fields if f["title"] == "blob")
+    assert "line-1" in blob_field["value"]
 
 
 def test_slack_api_error_does_not_propagate(fake_slack, monkeypatch):

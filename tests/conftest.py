@@ -33,8 +33,10 @@ class FakeWebClient:
         self.calls: list[dict[str, Any]] = []
         FakeWebClient.instances.append(self)
 
-    def chat_postMessage(self, *, channel: str, attachments: list[dict[str, Any]]):
-        self.calls.append({"channel": channel, "attachments": attachments})
+    def chat_postMessage(self, **kwargs: Any) -> dict[str, str]:
+        # Accept and record whatever was passed (channel, attachments,
+        # thread_ts, etc.) so tests can introspect any of it.
+        self.calls.append(kwargs)
         return {"ts": "1234.5678"}
 
     @classmethod
