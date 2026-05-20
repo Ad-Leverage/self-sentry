@@ -61,6 +61,7 @@ class LambdaTimeoutWatchdog:
             self._fired = True
         try:
             from ._client import notify
+            from ._formatter import _code_block
 
             try:
                 remaining_ms = int(self._context.get_remaining_time_in_millis())
@@ -70,7 +71,7 @@ class LambdaTimeoutWatchdog:
                 "remaining_ms": remaining_ms,
                 "function_name": getattr(self._context, "function_name", "?"),
                 "request_id": getattr(self._context, "aws_request_id", "?"),
-                "event": self._event_repr,
+                "event": _code_block(self._event_repr),
             }
             notify(
                 title="Lambda approaching timeout",

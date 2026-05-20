@@ -46,8 +46,12 @@ def test_event_truncated_at_1500_chars(initialized):
 
     att = initialized.instances[0].calls[0]["attachments"][0]
     event_field = next(f for f in att["fields"] if f["title"] == "event")
-    assert event_field["value"].endswith("...[truncated]")
-    assert len(event_field["value"]) <= 1500 + len("...[truncated]")
+    # Field is wrapped in a Slack code block, so the truncation marker is now
+    # interior, not the suffix.
+    assert "...[truncated]" in event_field["value"]
+    assert event_field["value"].startswith("```\n") and event_field["value"].endswith("\n```")
+    code_block_overhead = len("```\n\n```")
+    assert len(event_field["value"]) <= 1500 + len("...[truncated]") + code_block_overhead
 
 
 def test_non_lambda_function_still_works(initialized):

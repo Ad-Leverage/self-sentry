@@ -18,6 +18,10 @@ def get_color(status: int) -> str | None:
     return _COLOR_BY_STATUS.get(status)
 
 
+def _code_block(s: str) -> str:
+    return f"```\n{s}\n```"
+
+
 def build_attachment(
     service_name: str,
     status: int,
@@ -29,7 +33,10 @@ def build_attachment(
     attachment_fields = []
     if fields:
         for key, val in fields.items():
-            attachment_fields.append({"title": key, "value": str(val), "short": True})
+            value_str = str(val)
+            attachment_fields.append(
+                {"title": key, "value": value_str, "short": "\n" not in value_str}
+            )
     return {
         "color": get_color(status),
         "author_name": service_name,
@@ -37,6 +44,7 @@ def build_attachment(
         "text": message,
         "fields": attachment_fields,
         "footer": footer,
+        "mrkdwn_in": ["fields"],
     }
 
 

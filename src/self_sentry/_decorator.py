@@ -7,7 +7,7 @@ from typing import Any
 
 from ._client import report_exception
 from ._config import get_config
-from ._formatter import serialize_event
+from ._formatter import _code_block, serialize_event
 from ._hooks import try_install_asyncio_handler
 from ._watchdog import LambdaTimeoutWatchdog
 
@@ -62,7 +62,7 @@ def report_errors(service_name: str | None = None) -> Callable:
                 try:
                     ctx: dict[str, Any] = {}
                     if event_for_report is not None:
-                        ctx["event"] = serialize_event(event_for_report)
+                        ctx["event"] = _code_block(serialize_event(event_for_report))
                     report_exception(e, context=ctx, service_name=service_name)
                 except Exception as reporter_err:  # noqa: BLE001
                     log.warning("self_sentry report_errors reporter failed: %s", reporter_err)

@@ -5,7 +5,7 @@ import threading
 from typing import Any
 
 from ._config import get_config
-from ._formatter import build_attachment, truncate_traceback
+from ._formatter import _code_block, build_attachment, truncate_traceback
 
 log = logging.getLogger("self_sentry")
 
@@ -77,7 +77,7 @@ def report_exception(
         return
     try:
         tb = truncate_traceback(exc)
-        fields: dict[str, Any] = {"Traceback": tb}
+        fields: dict[str, Any] = {"Traceback": _code_block(tb)}
         if context:
             fields.update(context)
         notify(
