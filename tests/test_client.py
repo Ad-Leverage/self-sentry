@@ -74,6 +74,40 @@ def test_reentry_guard_prevents_recursion(initialized, monkeypatch):
     assert call_count["n"] == 1
 
 
+def test_dict_context_renders_as_inline_code_block(initialized):
+    """Non-string context values are JSON-pretty-printed into a code block
+    on the parent message — they do NOT move to a thread reply."""
+    try:
+        raise ValueError("boom")
+    except ValueError as e:
+        self_sentry.report_exception(
+            e, context={"data": {"id": 1, "name": "alice"}}
+        )
+
+    calls = initialized.instances[0].calls
+    # initialized pins thread_long_fields=False, so still one call.
+    assert len(calls) == 1
+    fields = calls[0]["attachments"][0]["fields"]
+    data_field = next(f for f in fields if f["title"] == "data")
+    assert data_field["value"].startswith("```\n")
+    assert data_field["value"].endswith("\n```")
+    assert '"name": "alice"' in data_field["value"]
+    assert data_field["short"] is False  # multi-line → full-width
+
+
+def test_scalar_context_not_code_blocked(initialized):
+    """Int/float/bool/None render as plain strings, not code blocks."""
+    self_sentry.notify("hi", fields={"count": 42, "ratio": 0.5, "ok": True, "x": None})
+    fields = initialized.instances[0].calls[0]["attachments"][0]["fields"]
+    by_title = {f["title"]: f for f in fields}
+    assert by_title["count"]["value"] == "42"
+    assert by_title["ratio"]["value"] == "0.5"
+    assert by_title["ok"]["value"] == "True"
+    assert by_title["x"]["value"] == "None"
+    # All scalars → single-line → short stays True
+    assert all(f["short"] is True for f in fields)
+
+
 def test_thread_long_fields_splits_traceback_into_reply(fake_slack):
     self_sentry.init(
         token="xoxb-1",

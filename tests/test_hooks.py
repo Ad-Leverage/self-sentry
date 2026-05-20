@@ -18,7 +18,14 @@ def test_sys_excepthook_chains_previous(fake_slack):
     sys.excepthook = my_prev
     try:
         # init() must run AFTER my_prev is set so it captures my_prev as the prior hook.
-        self_sentry.init(token="xoxb-test-1", channel="#alerts", service_name="test-service")
+        # thread_long_fields=False keeps this test focused on hook chaining,
+        # not on the (orthogonal) parent+reply post pattern.
+        self_sentry.init(
+            token="xoxb-test-1",
+            channel="#alerts",
+            service_name="test-service",
+            thread_long_fields=False,
+        )
         try:
             raise RuntimeError("hook test")
         except RuntimeError:

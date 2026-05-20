@@ -22,6 +22,26 @@ def _code_block(s: str) -> str:
     return f"```\n{s}\n```"
 
 
+def _format_field_value(val: Any) -> str:
+    """Stringify a Slack field value, wrapping structured types in a code block.
+
+    Strings pass through unchanged so callers that pre-wrapped (traceback,
+    serialized event) keep their formatting. Scalars (int/float/bool/None)
+    render as plain strings so things like ``remaining_ms=-1`` don't get a
+    code-block wrapper. Anything else — dicts, lists, dataclasses, custom
+    objects — is JSON-pretty-printed and wrapped in a triple-backtick block.
+    """
+    if isinstance(val, str):
+        return val
+    if val is None or isinstance(val, (int, float, bool)):
+        return str(val)
+    try:
+        pretty = json.dumps(val, indent=2, default=str)
+    except (TypeError, ValueError):
+        pretty = repr(val)
+    return _code_block(pretty)
+
+
 def build_attachment(
     service_name: str,
     status: int,
@@ -33,7 +53,7 @@ def build_attachment(
     attachment_fields = []
     if fields:
         for key, val in fields.items():
-            value_str = str(val)
+            value_str = _format_field_value(val)
             attachment_fields.append(
                 {"title": key, "value": value_str, "short": "\n" not in value_str}
             )

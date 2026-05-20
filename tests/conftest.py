@@ -72,6 +72,17 @@ def fake_slack(monkeypatch):
 
 @pytest.fixture
 def initialized(fake_slack):
-    """Library initialized with one token + one channel."""
-    self_sentry.init(token="xoxb-test-1", channel="#alerts", service_name="test-service")
+    """Library initialized with one token + one channel.
+
+    Pins ``thread_long_fields=False`` so tests focused on the single
+    chat_postMessage path stay unaffected by the v0.3.0 default flip.
+    Tests covering the threaded layout call ``self_sentry.init(...)``
+    themselves and opt back in.
+    """
+    self_sentry.init(
+        token="xoxb-test-1",
+        channel="#alerts",
+        service_name="test-service",
+        thread_long_fields=False,
+    )
     return fake_slack

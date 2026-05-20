@@ -91,10 +91,11 @@ def report_exception(
         tb = truncate_traceback(exc)
         ctx = dict(context) if context else {}
         if cfg.thread_long_fields:
-            # Multi-line context entries (event JSON etc.) follow the
-            # traceback into the thread reply so the channel feed stays
-            # to one short row per alert.
-            long_fields = {k: v for k, v in ctx.items() if "\n" in str(v)}
+            # Only pre-stringified multi-line content (traceback, the
+            # decorator's serialize_event output) goes to the thread.
+            # Structured user values (dict/list/obj) are auto-code-blocked
+            # by build_attachment but stay inline on the parent.
+            long_fields = {k: v for k, v in ctx.items() if isinstance(v, str) and "\n" in v}
             short_fields = {k: v for k, v in ctx.items() if k not in long_fields}
             ts = notify(
                 title=type(exc).__name__,

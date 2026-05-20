@@ -18,7 +18,7 @@ from ._client import notify, report_exception
 from ._config import init, init_from_env, is_initialized
 from ._decorator import report_errors
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",
