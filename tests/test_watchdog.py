@@ -24,8 +24,7 @@ def test_watchdog_fires_when_not_cancelled(initialized):
     assert len(initialized.instances[0].calls) == 1
     att = initialized.instances[0].calls[0]["attachments"][0]
     assert att["title"] == "Lambda approaching timeout"
-    fn_field = next(f for f in att["fields"] if f["title"] == "function_name")
-    assert fn_field["value"] == "fn"
+    assert "*function_name:* fn" in att["text"]
 
 
 def test_watchdog_cancelled_before_fire_does_not_post(initialized):
@@ -114,15 +113,16 @@ def test_watchdog_threads_event_when_enabled(fake_slack):
 
     parent, reply = calls[0], calls[1]
     assert parent.get("thread_ts") is None
-    assert parent["attachments"][0]["title"] == "Lambda approaching timeout"
-    parent_fields = parent["attachments"][0]["fields"]
+    parent_att = parent["attachments"][0]
+    assert parent_att["title"] == "Lambda approaching timeout"
     # function_name etc. stay on the parent; event moves to the reply.
-    assert any(f["title"] == "function_name" for f in parent_fields)
-    assert all(f["title"] != "event" for f in parent_fields)
+    assert "*function_name:* fn" in parent_att["text"]
+    assert "event" not in parent_att["text"]
 
     assert reply["thread_ts"] == "1234.5678"
-    event_field = next(f for f in reply["attachments"][0]["fields"] if f["title"] == "event")
-    assert "hello" in event_field["value"]
+    reply_text = reply["attachments"][0]["text"]
+    assert "*event*" in reply_text
+    assert "hello" in reply_text
 
 
 @pytest.mark.parametrize("remaining_ms", [1, 5, 50])

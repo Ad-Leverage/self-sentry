@@ -49,9 +49,7 @@ def test_threading_excepthook_reports(initialized):
     assert len(initialized.instances[0].calls) >= 1
     att = initialized.instances[0].calls[0]["attachments"][0]
     assert att["title"] == "ValueError"
-    thread_field = next((f for f in att["fields"] if f["title"] == "thread"), None)
-    assert thread_field is not None
-    assert thread_field["value"] == "boomer"
+    assert "*thread:* boomer" in att["text"]
 
 
 async def test_asyncio_handler_reports_uncaught_task_exception(initialized):

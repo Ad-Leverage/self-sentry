@@ -30,8 +30,8 @@ def test_exception_path_posts_and_reraises(initialized):
     att = inst.calls[0]["attachments"][0]
     assert att["title"] == "ValueError"
     assert att["author_name"] == "worker-name"  # decorator override
-    event_field = next(f for f in att["fields"] if f["title"] == "event")
-    assert '"id"' in event_field["value"]
+    assert "*event*" in att["text"]
+    assert '"id"' in att["text"]
 
 
 def test_event_truncated_at_1500_chars(initialized):
@@ -45,13 +45,15 @@ def test_event_truncated_at_1500_chars(initialized):
         handler(huge, FakeLambdaContext())
 
     att = initialized.instances[0].calls[0]["attachments"][0]
-    event_field = next(f for f in att["fields"] if f["title"] == "event")
-    # Field is wrapped in a Slack code block, so the truncation marker is now
-    # interior, not the suffix.
-    assert "...[truncated]" in event_field["value"]
-    assert event_field["value"].startswith("```\n") and event_field["value"].endswith("\n```")
-    code_block_overhead = len("```\n\n```")
-    assert len(event_field["value"]) <= 1500 + len("...[truncated]") + code_block_overhead
+    # serialize_event capped at 1500 chars + "...[truncated]" suffix, then the
+    # decorator wraps it in a code block, then build_attachment composes it
+    # under a *event* header — assert each layer survived.
+    assert "*event*" in att["text"]
+    assert "...[truncated]" in att["text"]
+    assert "```" in att["text"]
+    # Body length bounded by both truncation caps (traceback 3000 + event 1500)
+    # plus a small constant for markdown wrappers and the "fail" message.
+    assert len(att["text"]) <= 3000 + 1500 + len("...[truncated]") + 200
 
 
 def test_non_lambda_function_still_works(initialized):

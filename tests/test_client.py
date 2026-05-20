@@ -15,9 +15,10 @@ def test_notify_posts_to_configured_channel(initialized):
     assert call["channel"] == "#alerts"
     att = call["attachments"][0]
     assert att["title"] == "hello"
-    assert att["text"] == "world"
-    assert {"title": "k", "value": "v", "short": True} in att["fields"]
+    assert "world" in att["text"]
+    assert "*k:* v" in att["text"]  # inline bold-label markdown
     assert att["color"] == "#2eb886"  # status=0 → success green
+    assert att["mrkdwn_in"] == ["text"]
 
 
 def test_notify_explicit_channel_overrides_default(initialized):
@@ -44,11 +45,11 @@ def test_report_exception_includes_traceback(initialized):
     call = initialized.instances[0].calls[0]
     att = call["attachments"][0]
     assert att["title"] == "ValueError"
-    assert att["text"] == "boom"
-    tb_field = next(f for f in att["fields"] if f["title"] == "Traceback")
-    assert "ValueError: boom" in tb_field["value"]
-    event_field = next(f for f in att["fields"] if f["title"] == "event")
-    assert event_field["value"] == "{}"
+    # Exception message + fields are now composed into a single markdown body.
+    assert att["text"].startswith("boom")
+    assert "*Traceback*" in att["text"]
+    assert "ValueError: boom" in att["text"]
+    assert "*event:* {}" in att["text"]
 
 
 def test_reentry_guard_prevents_recursion(initialized, monkeypatch):
@@ -87,25 +88,22 @@ def test_dict_context_renders_as_inline_code_block(initialized):
     calls = initialized.instances[0].calls
     # initialized pins thread_long_fields=False, so still one call.
     assert len(calls) == 1
-    fields = calls[0]["attachments"][0]["fields"]
-    data_field = next(f for f in fields if f["title"] == "data")
-    assert data_field["value"].startswith("```\n")
-    assert data_field["value"].endswith("\n```")
-    assert '"name": "alice"' in data_field["value"]
-    assert data_field["short"] is False  # multi-line → full-width
+    text = calls[0]["attachments"][0]["text"]
+    # Header for the dict field, then a JSON code block underneath.
+    assert "*data*" in text
+    assert "```\n{" in text
+    assert '"name": "alice"' in text
 
 
 def test_scalar_context_not_code_blocked(initialized):
-    """Int/float/bool/None render as plain strings, not code blocks."""
+    """Int/float/bool/None render as plain ``*key:* value`` lines, not code blocks."""
     self_sentry.notify("hi", fields={"count": 42, "ratio": 0.5, "ok": True, "x": None})
-    fields = initialized.instances[0].calls[0]["attachments"][0]["fields"]
-    by_title = {f["title"]: f for f in fields}
-    assert by_title["count"]["value"] == "42"
-    assert by_title["ratio"]["value"] == "0.5"
-    assert by_title["ok"]["value"] == "True"
-    assert by_title["x"]["value"] == "None"
-    # All scalars → single-line → short stays True
-    assert all(f["short"] is True for f in fields)
+    text = initialized.instances[0].calls[0]["attachments"][0]["text"]
+    assert "*count:* 42" in text
+    assert "*ratio:* 0.5" in text
+    assert "*ok:* True" in text
+    assert "*x:* None" in text
+    assert "```" not in text  # no scalar got wrapped in a code block
 
 
 def test_thread_long_fields_splits_traceback_into_reply(fake_slack):
@@ -127,19 +125,19 @@ def test_thread_long_fields_splits_traceback_into_reply(fake_slack):
 
     # Parent: alert with short context only — no traceback, no multi-line blob.
     assert parent.get("thread_ts") is None
-    parent_fields = parent["attachments"][0]["fields"]
-    assert parent["attachments"][0]["title"] == "ValueError"
-    assert any(f["title"] == "user" and f["value"] == "alice" for f in parent_fields)
-    assert all(f["title"] != "Traceback" for f in parent_fields)
-    assert all(f["title"] != "blob" for f in parent_fields)
+    parent_att = parent["attachments"][0]
+    assert parent_att["title"] == "ValueError"
+    assert "*user:* alice" in parent_att["text"]
+    assert "Traceback" not in parent_att["text"]
+    assert "line-1" not in parent_att["text"]
 
     # Reply: threaded against the parent's ts, carries traceback + multi-line blob.
     assert reply["thread_ts"] == "1234.5678"
-    reply_fields = reply["attachments"][0]["fields"]
-    tb_field = next(f for f in reply_fields if f["title"] == "Traceback")
-    assert "ValueError: boom" in tb_field["value"]
-    blob_field = next(f for f in reply_fields if f["title"] == "blob")
-    assert "line-1" in blob_field["value"]
+    reply_text = reply["attachments"][0]["text"]
+    assert "*Traceback*" in reply_text
+    assert "ValueError: boom" in reply_text
+    assert "*blob*" in reply_text
+    assert "line-1" in reply_text
 
 
 def test_slack_api_error_does_not_propagate(fake_slack, monkeypatch):

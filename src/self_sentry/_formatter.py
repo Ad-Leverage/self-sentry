@@ -22,24 +22,25 @@ def _code_block(s: str) -> str:
     return f"```\n{s}\n```"
 
 
-def _format_field_value(val: Any) -> str:
-    """Stringify a Slack field value, wrapping structured types in a code block.
+def _format_field(key: str, val: Any) -> str:
+    """Render one field as a markdown chunk for the attachment body.
 
-    Strings pass through unchanged so callers that pre-wrapped (traceback,
-    serialized event) keep their formatting. Scalars (int/float/bool/None)
-    render as plain strings so things like ``remaining_ms=-1`` don't get a
-    code-block wrapper. Anything else — dicts, lists, dataclasses, custom
-    objects — is JSON-pretty-printed and wrapped in a triple-backtick block.
+    Short scalars and single-line strings render inline as ``*key:* value``.
+    Pre-stringified multi-line content (e.g. a wrapped traceback) and
+    structured values (dict/list/obj, pretty-printed as JSON) render as a
+    ``*key*`` header on one line followed by their content underneath.
     """
     if isinstance(val, str):
-        return val
+        if "\n" in val:
+            return f"*{key}*\n{val}"
+        return f"*{key}:* {val}"
     if val is None or isinstance(val, (int, float, bool)):
-        return str(val)
+        return f"*{key}:* {val}"
     try:
         pretty = json.dumps(val, indent=2, default=str)
     except (TypeError, ValueError):
         pretty = repr(val)
-    return _code_block(pretty)
+    return f"*{key}*\n{_code_block(pretty)}"
 
 
 def build_attachment(
@@ -50,21 +51,19 @@ def build_attachment(
     fields: dict[str, Any] | None,
     footer: str = "self-sentry",
 ) -> dict[str, Any]:
-    attachment_fields = []
+    body_parts: list[str] = []
+    if message:
+        body_parts.append(message)
     if fields:
-        for key, val in fields.items():
-            value_str = _format_field_value(val)
-            attachment_fields.append(
-                {"title": key, "value": value_str, "short": "\n" not in value_str}
-            )
+        body_parts.append("\n".join(_format_field(k, v) for k, v in fields.items()))
+    body = "\n\n".join(body_parts)
     return {
         "color": get_color(status),
         "author_name": service_name,
         "title": title,
-        "text": message,
-        "fields": attachment_fields,
+        "text": body,
         "footer": footer,
-        "mrkdwn_in": ["fields"],
+        "mrkdwn_in": ["text"],
     }
 
 
