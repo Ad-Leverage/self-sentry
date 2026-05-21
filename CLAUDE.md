@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`self-sentry` is a Sentry-style Slack error-reporting library for Python. One `init()` call wires up a Slack bot + channel; from then on a `@report_errors()` decorator, global `sys`/`threading`/`asyncio` excepthooks, a Lambda timeout watchdog, and a manual `notify()` all post to that one destination. Distributed by git tag (no PyPI) — consumers pin `git+ssh://.../self-sentry.git@vX.Y.Z`.
+`self-sentry` is a Sentry-style Slack error-reporting library for Python. One `init()` call wires up a Slack bot + channel; from then on a `@report_errors()` decorator, global `sys`/`threading`/`asyncio` excepthooks, a Lambda timeout watchdog, and a manual `notify()` all post to that one destination. Published to PyPI as `self-sentry`; tag drives the release workflow which builds, publishes to PyPI via Trusted Publishing, and attaches artifacts to a GitHub Release.
 
 ## Commands
 
@@ -15,7 +15,7 @@ pytest tests/test_decorator.py::test_x -q     # single test
 ruff check src tests                          # lint (CI gates this)
 mypy src/self_sentry                          # type-check (CI gates this)
 LIVE_SLACK_TOKEN=xoxb-... LIVE_SLACK_CHANNEL='#test' python -m tests.smoke.send_real  # real Slack smoke
-git tag vX.Y.Z && git push --tags             # release (no PyPI publish)
+git tag vX.Y.Z && git push --tags             # release: triggers PyPI publish + GH Release
 ```
 
 CI matrix is Python 3.10 / 3.11 / 3.12; lockstep with `requires-python = ">=3.10"` in `pyproject.toml`.
@@ -29,7 +29,7 @@ Single process-wide config object owns all state. Everything else routes through
 - **`_hooks.py`** — `install_global_hooks` chains `sys.excepthook` and `threading.excepthook` (originals saved into `cfg.originals` for later `restore_global_hooks`). The asyncio handler is **lazy** — `try_install_asyncio_handler()` is called from inside `report_errors`'s wrapper on every call and only does work on the first running loop it sees, tracked by `id(loop)` in `_asyncio_installed_loops`. This is deliberate: FastAPI/Mangum decide which loop to use, so hooking at `init()` time would attach to the wrong (or no) loop.
 - **`_decorator.py`** — `report_errors()` is the user-facing wrapper. It sniffs `(event, context)` shape via `hasattr(context, "get_remaining_time_in_millis")` and, if it looks like a Lambda invocation, arms a `LambdaTimeoutWatchdog`. Always re-raises; the catch is purely for reporting. `try_install_asyncio_handler()` runs first so async handlers get the loop hook.
 - **`_watchdog.py`** — `threading.Timer` set to fire `buffer_ms` before `get_remaining_time_in_millis()` runs out. The decorator's `finally` block **must** cancel it: Lambda freezes the process between invocations, so a leaked timer would fire against a future invocation's context. `_fire` is guarded with `_fired` + a lock so cancel/fire races are safe.
-- **`_formatter.py`** — Slack attachment shape + status→color map. Status integers (0=success/green, 1=error/orange, 2=debug/grey, 3=info/purple) are **wire-compatible with the older `earlier-internal-bot` impl** — don't renumber.
+- **`_formatter.py`** — Slack attachment shape + status→color map. Status integers (0=success/green, 1=error/orange, 2=debug/grey, 3=info/purple) are **wire-compatible with our earlier internal bot impl** — don't renumber.
 
 ### Invariants worth preserving
 

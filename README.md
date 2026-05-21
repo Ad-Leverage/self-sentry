@@ -12,10 +12,22 @@ One `init()` call per project, then:
 ## Install
 
 ```
-pip install git+ssh://git@github.com/Ad-Leverage/self-sentry.git@v0.1.0
+pip install self-sentry
 ```
 
-Pin to a tag, not a branch — that's what makes reproducible Lambda builds work.
+Or pin an exact version (recommended for reproducible Lambda builds):
+
+```
+pip install self-sentry==0.4.1
+```
+
+### Fallback: install direct from git
+
+Useful for testing an unreleased commit:
+
+```
+pip install "self-sentry @ git+https://github.com/Ad-Leverage/self-sentry.git@v0.4.1"
+```
 
 ## Quickstart
 
@@ -101,13 +113,14 @@ LIVE_SLACK_TOKEN=xoxb-... LIVE_SLACK_CHANNEL='#test' python -m tests.smoke.send_
 
 ## Release
 
-Tag-based; no PyPI.
+Tag-driven. Push a `vX.Y.Z` tag and CI builds the wheel + sdist, publishes to PyPI via [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (no API tokens), and attaches both artifacts to a GitHub Release as a secondary archive.
 
 ```
-git tag v0.1.0 && git push --tags
+# Bump project.version in pyproject.toml first, then:
+git tag v0.4.1 && git push --tags
 ```
 
-Bump the `@vX.Y.Z` pin in consumer projects to upgrade.
+The release workflow refuses to publish if the tag doesn't match `project.version` in `pyproject.toml`. Bump the version pin in consumer projects to upgrade.
 
 ## Caveats
 

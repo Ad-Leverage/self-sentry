@@ -4,8 +4,8 @@ import json
 import traceback
 from typing import Any
 
-# Status semantics borrowed from the original earlier-internal-bot impl so
-# Slack color coding stays consistent across projects that migrate over.
+# Status integer -> Slack color mapping. Kept wire-compatible with earlier
+# internal bot implementations; do not renumber.
 _COLOR_BY_STATUS = {
     0: "#2eb886",  # success / book
     1: "#f4a913",  # error
