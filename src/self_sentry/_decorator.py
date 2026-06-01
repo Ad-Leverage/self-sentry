@@ -18,7 +18,7 @@ def _looks_like_lambda_context(obj: Any) -> bool:
     return hasattr(obj, "get_remaining_time_in_millis")
 
 
-def report_errors(service_name: str | None = None) -> Callable:
+def report_errors(service_name: str | None = None, *, send_email: bool = False) -> Callable:
     """Decorator: catch uncaught exceptions, post to Slack, re-raise.
 
     Works on Lambda handlers and plain functions:
@@ -29,6 +29,10 @@ def report_errors(service_name: str | None = None) -> Callable:
     Usage:
         @report_errors()                  # uses init()'s service_name
         @report_errors("my-worker")       # override
+        @report_errors(send_email=True)   # also email the alert (see init())
+
+    Pass ``send_email=True`` to also send an email alert (requires email
+    creds configured at ``init()``; otherwise it just logs and posts to Slack).
 
     Silent no-op if init() was never called or no tokens are configured.
     Always re-raises so business behavior is unaffected.
@@ -63,7 +67,9 @@ def report_errors(service_name: str | None = None) -> Callable:
                     ctx: dict[str, Any] = {}
                     if event_for_report is not None:
                         ctx["event"] = _code_block(serialize_event(event_for_report))
-                    report_exception(e, context=ctx, service_name=service_name)
+                    report_exception(
+                        e, context=ctx, service_name=service_name, send_email=send_email
+                    )
                 except Exception as reporter_err:  # noqa: BLE001
                     log.warning("self_sentry report_errors reporter failed: %s", reporter_err)
                 raise

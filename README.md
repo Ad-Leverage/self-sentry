@@ -38,13 +38,50 @@ self_sentry.notify("Booking succeeded", fields={"booking_id": 42}, status=0)
 
 ### Env-driven init (good for Lambdas that already hydrate secrets)
 
-Set `SLACK_BOT_TOKEN`, `SLACK_CHANNEL`, and `SERVICE_NAME`, then:
+Set `SLACK_BOT_TOKEN`, `SLACK_CHANNEL`, and `SERVICE_NAME` (and optionally the
+email vars below), then:
 
 ```python
 self_sentry.init_from_env()
 ```
 
-No-op (with a warning) if any of the three is missing — safe to call unconditionally at app startup.
+No-op (with a warning) if any of the three required vars is missing — safe to call unconditionally at app startup.
+
+### Email alerts (optional, via SendGrid)
+
+Slack is always the primary destination. To *also* email an alert, configure
+SendGrid at `init()` and opt in per call with `send_email=True`:
+
+```python
+self_sentry.init(
+    token=os.environ["SLACK_BOT_TOKEN"],
+    channel="#my-project-alerts",
+    service_name="my-service",
+    sendgrid_api_key=os.environ["SENDGRID_API_KEY"],
+    email_from="alerts@my-co.com",
+    email_to="oncall@my-co.com,backend@my-co.com",   # comma-separated string or a list
+)
+
+# Slack only (default):
+self_sentry.notify("Heads up", status=3)
+
+# Slack + email:
+self_sentry.notify("Cookie expired", status=1, fields={"builder_id": 106609}, send_email=True)
+self_sentry.report_exception(exc, send_email=True)
+
+@self_sentry.report_errors(send_email=True)   # email uncaught exceptions too
+def lambda_handler(event, context): ...
+```
+
+`init_from_env()` reads the same from `SENDGRID_API_KEY`, `ALERT_EMAIL_FROM`,
+and `ALERT_EMAIL_TO`. Email is sent through SendGrid's `v3/mail/send` REST API
+over stdlib `urllib` — **no extra dependency**. The email body mirrors the Slack
+alert's message + fields (and, for `report_exception`, the full traceback).
+
+If `send_email=True` is requested but email creds are absent (or recipients
+parse to empty), nothing is emailed — the Slack post still goes out and a
+warning is logged. Email failures are swallowed like Slack failures and never
+break business code.
 
 ## What gets reported
 

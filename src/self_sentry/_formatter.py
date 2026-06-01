@@ -67,6 +67,31 @@ def build_attachment(
     }
 
 
+def _format_field_plain(key: str, val: Any) -> str:
+    """Render one field as plain text (no Slack markdown) for email bodies."""
+    if isinstance(val, str):
+        if "\n" in val:
+            return f"{key}:\n{val}"
+        return f"{key}: {val}"
+    if val is None or isinstance(val, (int, float, bool)):
+        return f"{key}: {val}"
+    try:
+        pretty = json.dumps(val, indent=2, default=str)
+    except (TypeError, ValueError):
+        pretty = repr(val)
+    return f"{key}:\n{pretty}"
+
+
+def build_email_body(message: str, fields: dict[str, Any] | None) -> str:
+    """Plain-text counterpart of the Slack attachment body, for email alerts."""
+    parts: list[str] = []
+    if message:
+        parts.append(message)
+    if fields:
+        parts.append("\n\n".join(_format_field_plain(k, v) for k, v in fields.items()))
+    return "\n\n".join(parts)
+
+
 def truncate_traceback(exc: BaseException, max_chars: int = 3000) -> str:
     tb = traceback.format_exc()
     if not tb or tb.strip() == "NoneType: None":

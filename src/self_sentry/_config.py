@@ -21,7 +21,22 @@ class SelfSentryConfig:
     timeout_warning_buffer_ms: int = 1000
     thread_long_fields: bool = True
     footer: str = "self-sentry"
+    sendgrid_api_key: str | None = None
+    email_from: str | None = None
+    email_to: tuple[str, ...] = ()
     originals: dict[str, Any] = field(default_factory=dict)
+
+
+def _parse_emails(value: str | list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+    """Normalize a recipients spec to a tuple of addresses.
+
+    Accepts a comma-separated string ("a@x.com,b@y.com"), an iterable of
+    strings, or None. Whitespace is trimmed and empties dropped.
+    """
+    if value is None:
+        return ()
+    parts = value.split(",") if isinstance(value, str) else list(value)
+    return tuple(p.strip() for p in parts if str(p).strip())
 
 
 _lock = threading.RLock()
@@ -48,6 +63,9 @@ def init(
     timeout_warning_buffer_ms: int = 1000,
     thread_long_fields: bool = True,
     footer: str = "self-sentry",
+    sendgrid_api_key: str | None = None,
+    email_from: str | None = None,
+    email_to: str | list[str] | tuple[str, ...] | None = None,
 ) -> None:
     """Initialize self-sentry. Sentry-style: call once at app startup.
 
@@ -57,6 +75,13 @@ def init(
     the short context, and the traceback / event payload move into a
     threaded reply, keeping the channel feed scannable. Pass
     ``thread_long_fields=False`` to get the older single-message shape.
+
+    Email (optional): pass ``sendgrid_api_key``, ``email_from`` and
+    ``email_to`` to enable email alerts via SendGrid. ``email_to`` accepts
+    a comma-separated string ("a@x.com,b@y.com") or a list. Email is only
+    sent when a call opts in with ``send_email=True`` (see ``notify`` /
+    ``report_exception`` / ``report_errors``); if those creds are absent,
+    a ``send_email=True`` call posts to Slack and logs a warning instead.
     """
     global _config
 
@@ -71,6 +96,9 @@ def init(
         timeout_warning_buffer_ms=timeout_warning_buffer_ms,
         thread_long_fields=thread_long_fields,
         footer=footer,
+        sendgrid_api_key=sendgrid_api_key,
+        email_from=email_from,
+        email_to=_parse_emails(email_to),
     )
 
     with _lock:
@@ -89,8 +117,12 @@ def init_from_env() -> None:
         SLACK_BOT_TOKEN   (required)
         SLACK_CHANNEL     (required)
         SERVICE_NAME      (required)
+        SENDGRID_API_KEY  (optional — enables email alerts)
+        ALERT_EMAIL_FROM  (optional — sender address)
+        ALERT_EMAIL_TO    (optional — comma-separated recipients)
 
-    No-op (with warning) if any of them is unset.
+    No-op (with warning) if any of the three required vars is unset. The
+    email vars are optional; without all three, email alerts stay off.
     """
     token = os.getenv("SLACK_BOT_TOKEN")
     channel = os.getenv("SLACK_CHANNEL")
@@ -101,7 +133,14 @@ def init_from_env() -> None:
             "and SERVICE_NAME are all required; skipping init",
         )
         return
-    init(token=token, channel=channel, service_name=service_name)
+    init(
+        token=token,
+        channel=channel,
+        service_name=service_name,
+        sendgrid_api_key=os.getenv("SENDGRID_API_KEY"),
+        email_from=os.getenv("ALERT_EMAIL_FROM"),
+        email_to=os.getenv("ALERT_EMAIL_TO"),
+    )
 
 
 def _reset_for_tests() -> None:

@@ -5,7 +5,8 @@ import threading
 from typing import Any
 
 from ._config import get_config
-from ._formatter import _code_block, build_attachment, truncate_traceback
+from ._email import send_error_email
+from ._formatter import _code_block, build_attachment, build_email_body, truncate_traceback
 
 log = logging.getLogger("self_sentry")
 
@@ -57,6 +58,7 @@ def notify(
     channel: str | None = None,
     service_name: str | None = None,
     thread_ts: str | None = None,
+    send_email: bool = False,
 ) -> str | None:
     cfg = get_config()
     if cfg is None:
@@ -73,7 +75,11 @@ def notify(
             fields=fields,
             footer=cfg.footer,
         )
-        return _post(cfg.token, channel or cfg.channel, attachment, thread_ts=thread_ts)
+        ts = _post(cfg.token, channel or cfg.channel, attachment, thread_ts=thread_ts)
+        if send_email:
+            subject = f"[{service_name or cfg.service_name}] {title}".strip()
+            send_error_email(cfg, subject, build_email_body(message, fields))
+        return ts
     finally:
         _in_progress.active = False
 
@@ -83,6 +89,7 @@ def report_exception(
     *,
     context: dict[str, Any] | None = None,
     service_name: str | None = None,
+    send_email: bool = False,
 ) -> None:
     cfg = get_config()
     if cfg is None:
@@ -123,6 +130,12 @@ def report_exception(
                 channel=None,
                 service_name=service_name,
             )
+        # One email carrying the full picture (raw traceback + context),
+        # independent of how Slack split it across the parent/thread.
+        if send_email:
+            subject = f"[{service_name or cfg.service_name}] {type(exc).__name__}"
+            email_fields: dict[str, Any] = {"Traceback": tb, **ctx}
+            send_error_email(cfg, subject, build_email_body(str(exc) or repr(exc), email_fields))
     except Exception as reporter_err:  # noqa: BLE001
         log.warning("self_sentry.report_exception failed: %s", reporter_err)
 
